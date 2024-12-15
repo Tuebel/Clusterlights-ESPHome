@@ -1,0 +1,167 @@
+esphome:
+  name: cluster-lights-ble
+  friendly_name: "Christmas Tree"
+
+esp32:
+  board: az-delivery-devkit-v4
+  framework:
+    type: esp-idf
+
+# Enable Bluetooth Low Energy (BLE)
+esp32_ble_tracker:
+  on_ble_advertise:
+    - mac_address: !secret lights_mac
+      then:
+        - lambda: |-
+            ESP_LOGD("ble_adv", "New BLE device");
+            ESP_LOGD("ble_adv", "  address: %s", x.address_str().c_str());
+            ESP_LOGD("ble_adv", "  name: %s", x.get_name().c_str());
+            ESP_LOGD("ble_adv", "  Advertised service UUIDs:");
+            for (auto uuid : x.get_service_uuids()) {
+                ESP_LOGD("ble_adv", "    - %s", uuid.to_string().c_str());
+            }
+            ESP_LOGD("ble_adv", "  Advertised service data:");
+            for (auto data : x.get_service_datas()) {
+                ESP_LOGD("ble_adv", "    - %s: (length %i)", data.uuid.to_string().c_str(), data.data.size());
+            }
+            ESP_LOGD("ble_adv", "  Advertised manufacturer data:");
+            for (auto data : x.get_manufacturer_datas()) {
+                ESP_LOGD("ble_adv", "    - %s: (length %i)", data.uuid.to_string().c_str(), data.data.size());
+            }
+
+# Update the MAC to match your lights
+ble_client:
+  mac_address: !secret lights_mac
+  id: cluster_lights
+  auto_connect: true
+  on_connect:
+    - ble_client.ble_write:
+        id: cluster_lights
+        service_uuid: FFF0
+        characteristic_uuid: FFF1
+        # turn on
+        value: [0x01, 0x01, 0x01, 0x01]
+
+# On / Off switch
+switch:
+  - platform: template
+    assumed_state: true
+    optimistic: true
+    name: "On/Off"
+    turn_on_action:
+      - ble_client.ble_write:
+          id: cluster_lights
+          service_uuid: FFF0
+          characteristic_uuid: FFF1
+          value: [0x01, 0x01, 0x01, 0x01]
+    turn_off_action:
+      - ble_client.ble_write:
+          id: cluster_lights
+          service_uuid: FFF0
+          characteristic_uuid: FFF1
+          value: [0x01, 0x01, 0x01, 0x00]
+  - platform: template
+    assumed_state: true
+    optimistic: true
+    name: "Brightness"
+    turn_on_action:
+      - ble_client.ble_write:
+          id: cluster_lights
+          service_uuid: FFF0
+          characteristic_uuid: FFF1
+          value: [0x03, 0x01, 0x01, 0x63]
+    turn_off_action:
+      - ble_client.ble_write:
+          id: cluster_lights
+          service_uuid: FFF0
+          characteristic_uuid: FFF1
+          value: [0x03, 0x01, 0x01, 0x32]
+
+# Select effect
+# Somehow only the previous effect is used, so send a second one to make it work
+# This issue is only present when using the select component
+select:
+  - platform: template
+    name: "Effect"
+    id: clusterlights_effect
+    options:
+      - "WAVE"
+      - "PHASE"
+      - "PHASED_FADE_AWAY"
+      - "PHASED_TWINKLE"
+      - "FADE_AWAY"
+      - "FAST_TWINKLE"
+      - "STAY_OFF"
+      - "STAY_ON"
+    optimistic: true
+    set_action:
+      - ble_client.ble_write:
+          id: cluster_lights
+          service_uuid: FFF0
+          characteristic_uuid: FFF1
+          value: !lambda |-
+            if (id(clusterlights_effect).state == "WAVE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x01};
+            } else if (id(clusterlights_effect).state == "PHASE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x02};
+            } else if (id(clusterlights_effect).state == "PHASED_FADE_AWAY") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x04};
+            } else if (id(clusterlights_effect).state == "PHASED_TWINKLE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x08};
+            } else if (id(clusterlights_effect).state == "FADE_AWAY") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x10};
+            } else if (id(clusterlights_effect).state == "FAST_TWINKLE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x20};
+            } else if (id(clusterlights_effect).state == "STAY_OFF") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x00};
+            } else {
+              // STAY_ON
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x40};
+            } 
+      - ble_client.ble_write:
+          id: cluster_lights
+          service_uuid: FFF0
+          characteristic_uuid: FFF1
+          value: !lambda |-
+            if (id(clusterlights_effect).state == "WAVE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x01};
+            } else if (id(clusterlights_effect).state == "PHASE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x02};
+            } else if (id(clusterlights_effect).state == "PHASED_FADE_AWAY") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x04};
+            } else if (id(clusterlights_effect).state == "PHASED_TWINKLE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x08};
+            } else if (id(clusterlights_effect).state == "FADE_AWAY") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x10};
+            } else if (id(clusterlights_effect).state == "FAST_TWINKLE") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x20};
+            } else if (id(clusterlights_effect).state == "STAY_OFF") {
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x00};
+            } else {
+              // STAY_ON
+              return std::vector<uint8_t>{0x05, 0x01, 0x02, 0x03, 0x40};
+            }
+            
+# ESPHome boilerplate
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret api_encryption_key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Christmas-Lights-Ble"
+    password: !secret wifi_fallback_password
+
+captive_portal:
